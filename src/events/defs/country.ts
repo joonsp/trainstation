@@ -330,7 +330,8 @@ class RickFireEvent extends Scripted {
       const x = base.x + dx, z = base.z + dz;
       const clearGround = this.safe(() => ctx.layout.terrain.clear(x, z, 3), true);
       const nearB = ctx.layout.buildings.some((b) => Math.hypot(b.center.x - x, b.center.z - z) < Math.max(b.size.x, b.size.z) / 2 + 5);
-      if (clearGround && !nearB) { rp.set(x, 0, z); break; }
+      const nearTree = this.safe(() => !!ctx.reg.world.treeNear?.(x, z, 6), false);
+      if (clearGround && !nearB && !nearTree) { rp.set(x, 0, z); break; }
     }
     rp.y = ctx.layout.heightAt(rp.x, rp.z);
     this.at.copy(rp);
@@ -400,23 +401,31 @@ class RickFireEvent extends Scripted {
     const chainA = pond.clone().lerp(rp, (pondA ? Math.max(pondA.size.x, pondA.size.z) * 0.55 : 6) / Math.max(1, pond.distanceTo(rp)));
     const chainB = rp.clone().lerp(pond, 3.2 / Math.max(1, pond.distanceTo(rp)));
     const hands = this.actors.crowd(7, rp.clone().lerp(pond, 0.5), 'farmhand', 6, 80);
+    // posts are filled from the rick end outward, so even a short chain works where the camera is looking
     const posts = hands.map((_, i) => {
-      const p = chainA.clone().lerp(chainB, hands.length > 1 ? i / (hands.length - 1) : 0.5);
+      const p = chainB.clone().lerp(chainA, hands.length > 1 ? i / (hands.length - 1) : 0.5);
       p.y = ctx.layout.heightAt(p.x, p.z);
       return p;
     });
     hands.forEach((id, i) => this.walk(id, posts[i]));
     const buckets = new InstProps(this.group, (buildBucket().children[0] as THREE.Mesh).geometry, 6, vcMat(), false).cull(rp.clone().lerp(pond, 0.5), pond.distanceTo(rp) * 0.5 + 6);
     const inChain = hands.map(() => false);
-    let bucketPh = 0, fireAge = 0;
+    let bucketPh = 0, fireAge = 0, rewalkT = 3;
+    const alive = (id: string) => this.actors.alive(id);
     this.tick((dt, dm) => {
+      // a recruit that settled into the crowd (or lost its walk) is sent on to its post again
+      rewalkT -= dm;
+      const rewalk = rewalkT <= 0;
+      if (rewalk) rewalkT = 4;
       hands.forEach((id, i) => {
         if (inChain[i]) return;
         const a = this.actors.pos(id);
         if (Math.hypot(a.x - posts[i].x, a.z - posts[i].z) < 1.4) { inChain[i] = true; this.actors.anim(id, 'carry'); this.actors.look(id, rp); }
+        else if (rewalk && !out) this.walk(id, posts[i]);
       });
       const working = inChain.filter(Boolean).length;
-      const chainOn = working >= Math.max(2, Math.ceil(hands.length * 0.6)) && !out;
+      const present = Math.max(1, hands.filter(alive).length);
+      const chainOn = working >= Math.max(2, Math.ceil(present * 0.6)) && !out;
       bucketPh += chainOn ? dt * 0.35 : 0;
       for (let k = 0; k < 6; k++) {
         if (!chainOn) { buckets.set(k, rp, 0, 0); continue; }
@@ -439,16 +448,35 @@ class RickFireEvent extends Scripted {
     this.on('vehicle:arrived', (e) => { if (e.vehicleId === engine && e.stop === barnDoor) engineAtBarn = true; });
     // (a vehicle still waiting inside its depot is not 'driving' either: it must actually be here)
     const engineHere = () => { const v = this.vehicle(engine); return !!v && v.state !== 'driving' && v.state !== 'gone' && (engineAtBarn || v.pos.distanceTo(rp) < 45); };
-    let jetT = 0;
+    let jetT = 0, crewT = 4;
+    let crewIds: string[] = [], crewAt: THREE.Vector3[] = [];
     const nozzle = new THREE.Vector3();
     this.tick((dt, dm) => {
+      // crew who stepped down into a 'look about' idle are sent on to the nozzle again
+      crewT -= dm;
+      if (crewT <= 0) {
+        crewT = 4;
+        crewIds.forEach((id, i) => {
+          const a = this.actors.pos(id);
+          if (this.actors.alive(id) && Math.hypot(a.x - crewAt[i].x, a.z - crewAt[i].z) > 2) {
+            this.walk(id, crewAt[i]);
+            this.after(Math.hypot(a.x - crewAt[i].x, a.z - crewAt[i].z) / 1.3 + 2, () => { this.actors.anim(id, out ? 'drink' : 'work'); this.actors.look(id, rp); });
+          }
+        });
+      }
       if (!engineArrived && engine && engineHere()) {
         engineArrived = true;
         const ev = this.vehicle(engine)!;
-        const crew = this.alight(engine, 'firefighter', rp.clone().lerp(ev.pos, 0.5));
+        let crew = this.alight(engine, 'firefighter', rp.clone().lerp(ev.pos, 0.5));
+        // traffic may already have set the crew down at the barn (trip destination): take charge of them there
+        const have = new Set(crew.map((id) => this.actors.pid(id)));
+        const adopted = this.safe(() => ctx.reg.people.list().filter((p) => p.role === 'firefighter' && !p.riding && !have.has(p.id) && p.position.distanceTo(ev.pos) < 18).map((p) => this.actors.adopt(p.id, 'firefighter')).filter((x): x is string => !!x), [] as string[]);
+        crew = [...crew, ...adopted];
         nozzle.copy(rp).lerp(ev.pos, 5 / Math.max(1, rp.distanceTo(ev.pos)));
         nozzle.y = ctx.layout.heightAt(nozzle.x, nozzle.z);
-        crew.forEach((id, i) => { this.walk(id, nozzle.clone().add(new THREE.Vector3(i * 0.9 - 0.9, 0, (i % 2) * 0.8))); this.after(3, () => { this.actors.anim(id, out ? 'drink' : 'work'); this.actors.look(id, rp); }); });
+        crewAt = crew.map((_, i) => nozzle.clone().add(new THREE.Vector3(i * 0.9 - 0.9, 0, (i % 2) * 0.8)));
+        crewIds = crew;
+        crew.forEach((id, i) => { this.walk(id, crewAt[i]); this.after(3, () => { this.actors.anim(id, out ? 'drink' : 'work'); this.actors.look(id, rp); }); });
         if (!out) { pumping = true; this.gazette('The Brigade arrives in a lather; the steam pump is set in the duck pond and a jet is played upon the rick', 'info'); }
         else this.gazette('The Brigade arrives to find the fire already out; the crew accept cider "in lieu of a blaze"', 'info');
       }

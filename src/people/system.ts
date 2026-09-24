@@ -671,9 +671,17 @@ export class PeopleSystem {
           }
           if (this.ctx.clock.minutes >= (p.data.stepEnd as number) || (s.until && s.until(p))) { this.endStep(p); continue; }
           // next stroll leg, then a pause
-          const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(0.3, 1) * s.r;
-          const tx = s.center.x + Math.cos(a) * r, tz = s.center.z + Math.sin(a) * r;
-          const tgt = new THREE.Vector3(tx, this.ctx.layout.heightAt(tx, tz), tz);
+          // a dry leg: never into (or straight across) the river, the lock or a building
+          const T = this.ctx.layout.terrain;
+          let tx = p.pos.x, tz = p.pos.z;
+          for (let tries = 0; tries < 8; tries++) {
+            const a = this.rng.range(0, Math.PI * 2), r = this.rng.range(0.3, 1) * s.r;
+            const cx = s.center.x + Math.cos(a) * r, cz = s.center.z + Math.sin(a) * r;
+            let ok = !T.buildingAt(cx, cz, 0.6);
+            for (let k = 1; ok && k <= 6; k++) { const f = k / 6; if (T.isWater(p.pos.x + (cx - p.pos.x) * f, p.pos.z + (cz - p.pos.z) * f)) ok = false; }
+            if (ok) { tx = cx; tz = cz; break; }
+          }
+          const tgt = new THREE.Vector3(tx, tx === p.pos.x && tz === p.pos.z ? p.pos.y : this.ctx.layout.heightAt(tx, tz), tz);
           this.go(p, tgt, () => { this.sleep(p, this.rng.range(3, 9), () => { /* next leg */ }); }, { direct: true });
           return;
         }
@@ -1050,6 +1058,20 @@ export class PeopleSystem {
         if (p.script) { this.tickScript(p, dtSim); if (!p.alive) continue; }
         this.moveStep(p, dtm, dt);
         if (!p.alive) continue;
+        // backstop: someone heading for a sink who has not moved for 30 sim min (a lost walk) sets off again —
+        // after two tries, through the nearest door instead
+        if (p.data.entering && !p.riding && !p.moving && p.wait <= 0 && !p.script && /going home|heading home|leaving|wandering off/.test(p.state)) {
+          p.data.stillT = ((p.data.stillT as number) ?? 0) + dtm;
+          if ((p.data.stillT as number) > 30) {
+            p.data.stillT = 0;
+            const tries = p.data.sinkRetry = ((p.data.sinkRetry as number) ?? 0) + 1;
+            const alt = tries > 2 ? this.ctx.origins.nearest(p.pos, 'people', { kinds: ['door'] }) : null;
+            const st = p.state;
+            p.data.entering = undefined; p.fadeLeg = null; p.fade = 1;
+            void this.dismiss(p, { to: alt?.id, state: st });
+            if (!p.alive) continue;
+          }
+        } else if (p.data.stillT) p.data.stillT = 0;
         if (p.kind === 'actor') {
           const now = this.ctx.clock.minutes;
           if (p.moving || p.script || p.wait > 0 || p.data.actT === undefined) p.data.actT = now;

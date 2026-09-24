@@ -21,7 +21,8 @@ const TRAIN_FADE = 0.42;
 const FADE_RATE = 3.5; // per second
 const SCAN_MS = 100;
 
-export interface Subject { pos: THREE.Vector3; kind: SelectKind }
+/** auto: a platform train gathered automatically (it may fade the P2 canopy, never the station building itself) */
+export interface Subject { pos: THREE.Vector3; kind: SelectKind; auto?: boolean }
 
 interface Occ {
   id: string;
@@ -99,7 +100,7 @@ export function createOccluderFader(ctx: Ctx) {
       if (!ctx.view.isVisible(t.position, 4)) continue;
       const s = pool[subjects.length]!;
       s.pos.copy(t.position).setY(2.6);
-      s.kind = 'train';
+      s.kind = 'train'; s.auto = true;
       subjects.push(s);
       // at P2 also the first two cars behind the engine (the canopy hides the whole front of the train)
       if (t.platform === 2) {
@@ -111,7 +112,7 @@ export function createOccluderFader(ctx: Ctx) {
             if (subjects.length >= pool.length - 2 || back > t.length) break;
             const q = pool[subjects.length]!;
             q.pos.copy(L.curve.getPointAt(Math.min(1, Math.max(0, t0 + (sg * back) / L.length)))).setY(2.6);
-            q.kind = 'train';
+            q.kind = 'train'; q.auto = true;
             subjects.push(q);
           }
         } catch { /* layout variant */ }
@@ -121,6 +122,9 @@ export function createOccluderFader(ctx: Ctx) {
 
   function hides(o: Occ, s: Subject): boolean {
     if (o.kinds && !o.kinds.has(s.kind)) return false;
+    // the station is the diorama's landmark: a passing / departing engine never ghosts it (only a followed or
+    // selected subject does); dwelling Highland engines already stop clear of it (layout stopTFor)
+    if (s.auto && o.id === 'station') return false;
     if (o.inv && o.local) {
       lray.copy(ray).applyMatrix4(o.inv);
       if (o.local.containsPoint(lray.origin)) return SMALL.has(s.kind);
@@ -146,7 +150,7 @@ export function createOccluderFader(ctx: Ctx) {
         for (const f of focus) {
           if (subjects.length >= 4) break;
           const s = pool[subjects.length]!;
-          s.pos.copy(f.pos); s.kind = f.kind;
+          s.pos.copy(f.pos); s.kind = f.kind; s.auto = false;
           subjects.push(s);
         }
         addPlatformTrains();

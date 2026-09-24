@@ -78,7 +78,7 @@ export function createWorld(ctx: Ctx): System {
   const signals = safe('signals', () => buildSignals(ctx, wm, root, batch));
   const shed = safe('shed', () => buildShed(ctx, wm, root, rng.fork(3), pickables, batch));
   safe('garden', () => buildGarden(ctx, wm, env, batch, rng.fork(5)));
-  safe('trees', () => buildTrees(ctx, wm, env, root, rng.fork(4), terrain?.treeSpots ?? []));
+  const treePts = safe('trees', () => buildTrees(ctx, wm, env, root, rng.fork(4), terrain?.treeSpots ?? [])) ?? [];
 
   // ── merge the static batch ──
   let detailMeshes: THREE.Mesh[] = [];
@@ -181,6 +181,7 @@ export function createWorld(ctx: Ctx): System {
     stationPickables: pickables,
     footbridgePath: footbridgePath.length ? footbridgePath : ctx.layout.footbridge.route.map((v) => v.clone()),
     flickerLamps(amount) { flickAmt = Math.max(0, Math.min(1, amount)); },
+    treeNear(x, z, r) { const r2 = r * r; for (const t of treePts) if ((t.x - x) ** 2 + (t.z - z) ** 2 < r2) return true; return false; },
     lamps: () => lamps?.info() ?? [],
     lampLit: (i) => lamps?.lit(i) ?? 0,
     lightLamp: (i, on) => { lamps?.light(i, on); },

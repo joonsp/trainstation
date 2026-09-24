@@ -285,8 +285,8 @@ ${rainRings ? `
   // snow drifts along the banks; mid-channel it is blown / swept thinner (skating lanes), so the frozen river
   // still reads as ice under snow instead of vanishing into the white meadows
   float drift = smoothstep(0.45, 0.95, margin) + 0.35 * smoothstep(0.1, 0.6, 0.5 + 0.5 * sin(vWPos.x * 0.23 + sin(vWPos.z * 0.19) * 2.0));
-  float snowOn = clamp(uSnowW * 1.2, 0.0, 1.0) * (0.6 + 0.4 * wIceM) * clamp(0.3 + 0.7 * drift, 0.0, 1.0);
-  vec3 iceC = mix(vec3(0.62, 0.75, 0.82), vec3(0.93, 0.95, 0.98), snowOn);
+  float snowOn = clamp(uSnowW * 1.1, 0.0, 1.0) * (0.5 + 0.5 * wIceM) * clamp(0.1 + 0.9 * drift, 0.0, 1.0);
+  vec3 iceC = mix(vec3(0.55, 0.68, 0.77), vec3(0.93, 0.95, 0.98), snowOn);
   iceC *= 1.0 - 0.18 * smoothstep(0.03, 0.0, crack) * (1.0 - snowOn);
   diffuseColor.rgb = mix(wc, iceC, wIceM);
   wRefl = 1.0 - wIceM * 0.85;
@@ -450,7 +450,9 @@ ${nLamps > 0 ? `
       }
       if (mist && mistMat && atm) {
         const m = Math.max(atm.dawnMist ?? 0, (atm.fog ?? 0) * 0.7);
-        mistMat.opacity = 0.6 * m;
+        // in real fog the scene fog and ground mist already whiten the valley: thinner cards so the water, lock and
+        // boats still read through the wisps (dawn mist in clear, calm weather keeps its full body)
+        mistMat.opacity = 0.6 * m * (1 - 0.55 * clamp01(atm.fog ?? 0));
         mist.visible = mistMat.opacity > 0.01;
         const day = 1 - clamp01(atm.nightFactor ?? 0);
         mistMat.color.setRGB(0.25 + 0.75 * day, 0.27 + 0.73 * day, 0.32 + 0.68 * day);

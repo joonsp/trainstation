@@ -213,7 +213,8 @@ export function buildBridges(ctx: Ctx, wm: WorldMats, batch: Batch): void {
       sh.lineTo(-half, bed);
       sh.closePath();
       batch.push(c.x, 0, c.z, yaw);
-      const W = b.width + 1.2;
+      // wide enough that the Kingsport Road footway (width/2 + 0.6 off the crown) runs INSIDE the parapet
+      const W = b.width + 2.4;
       elevation(m.stone, sh, W);
       // voussoirs + parapets following the hump
       for (const sz of [-1, 1]) {

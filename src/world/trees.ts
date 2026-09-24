@@ -15,7 +15,7 @@ import { pointInPoly } from '../core/poly';
  * crown baked into one geometry (aLeaf mixes trunk colour ↔ per-instance crown colour), split per chunk so they
  * frustum-cull, swaying with ctx.wind ('tree' mode, conifers at half amplitude).
  */
-export function buildTrees(ctx: Ctx, wm: WorldMats, env: Env, root: THREE.Object3D, rng: Rng, extra: { p: THREE.Vector3; conifer?: boolean; scale?: number }[]): void {
+export function buildTrees(ctx: Ctx, wm: WorldMats, env: Env, root: THREE.Object3D, rng: Rng, extra: { p: THREE.Vector3; conifer?: boolean; scale?: number }[]): THREE.Vector3[] {
   const L = ctx.layout;
   const T = L.terrain;
   const fields = L.fields.map((f) => f.poly);
@@ -128,6 +128,7 @@ export function buildTrees(ctx: Ctx, wm: WorldMats, env: Env, root: THREE.Object
   };
   add(chunkedInstances(decidGeo, dm.mat, dM, dC, 'trees', { cast: true, depth: dm.depth }));
   add(chunkedInstances(conGeo, cm.mat, cM, cC, 'conifers', { cast: true, depth: cm.depth }));
+  return spots.map((t) => t.p);
 }
 
 function trunk(r0: number, r1: number, h: number): THREE.BufferGeometry {

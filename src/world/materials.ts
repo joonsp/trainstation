@@ -229,6 +229,43 @@ export function createWorldMaterials(ctx: Ctx): WorldMats {
   // gust sheen across all fields (crop mode on every tier; aWind = 0 → no displacement)
   applyWind(ctx, m.field, { mode: 'crop', weight: 'attr', amp: 0 });
 
+  // ── meadow: the open grass is never one flat green. World-space patches (olive ↔ cool green), a fine tussock
+  // grain on med/high (faded out when sub-pixel), and soft sheen bands the wind combs across the grass (the
+  // countryside "breathes" even where there are no crops). Only grass-coloured vertices are touched, so worn
+  // paths, lawns and banks keep their tones; snow and wetness are applied after this (weatherize).
+  {
+    const W = ctx.wind.uniforms;
+    const fine = ctx.quality.tier !== 'low';
+    const meadow = (mat: THREE.Material, key: string) => chain(mat, key, (sh) => {
+      sh.uniforms.uMdT = W.uWindTime; sh.uniforms.uMdDir = W.uWindDir; sh.uniforms.uMdStr = W.uWindStr;
+      sh.vertexShader = inject(sh.vertexShader, '#include <common>', 'varying vec2 vMdXZ;');
+      sh.vertexShader = inject(sh.vertexShader, '#include <begin_vertex>', 'vMdXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      sh.fragmentShader = inject(sh.fragmentShader, '#include <common>', `uniform float uMdT, uMdStr; uniform vec2 uMdDir; varying vec2 vMdXZ;
+float vjMdH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vjMdN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(vjMdH(i), vjMdH(i + vec2(1.0, 0.0)), f.x), mix(vjMdH(i + vec2(0.0, 1.0)), vjMdH(i + vec2(1.0, 1.0)), f.x), f.y); }`);
+      sh.fragmentShader = inject(sh.fragmentShader, '#include <color_fragment>', `
+{
+  float grassy = smoothstep(0.015, 0.07, diffuseColor.g - max(diffuseColor.r, diffuseColor.b));
+  if (grassy > 0.001) {
+    vec2 xz = vMdXZ;
+    float patchN = vjMdN(xz * 0.03) * 0.7 + vjMdN(xz * 0.093 + 17.3) * 0.3;
+    vec3 tint = mix(vec3(0.86, 0.97, 0.9), vec3(1.13, 1.06, 0.76), smoothstep(0.25, 0.8, patchN));
+    float grain = 0.0;
+    ${fine ? `float fw = fwidth(xz.x) * 0.8;
+    grain = (vjMdN(xz * 0.8) - 0.5) * 0.15 * (1.0 - smoothstep(0.3, 0.8, fw));` : ''}
+    float along = dot(xz, uMdDir), cross = dot(xz, vec2(-uMdDir.y, uMdDir.x));
+    float band = sin(along * 0.15 - uMdT * 1.4 + sin(cross * 0.045 + uMdT * 0.2) * 2.0);
+    float gust = smoothstep(0.15, 1.0, band) * (0.55 + 0.45 * sin(cross * 0.07 - uMdT * 0.5));
+    float sheen = gust * (0.03 + 0.07 * clamp(uMdStr, 0.0, 1.5));
+    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * tint * (1.0 + grain + sheen), grassy);
+  }
+}`);
+    });
+    meadow(m.ground, 'vjMeadow' + (fine ? 'F' : ''));
+    meadow(m.bank, 'vjMeadow' + (fine ? 'F' : ''));
+  }
+
   // hedgerows sway a little at the top (baked aWind); garden shrubs by height above the (flat) station ground
   applyWind(ctx, m.shrub, { mode: 'foliage', weight: 'localY', height: 2.4, amp: 0.1, pivot: 'vertex' });
 

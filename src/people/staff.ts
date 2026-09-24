@@ -223,7 +223,7 @@ export class Staff {
     const line = L.lines.coast;
     const steps: Step[] = [];
     const side = 3.6; // cess on the south side of the coast line
-    const xs = [132, 150, 172, 196, 214, 236, 250];
+    const xs = [174, 186, 200, 208, 232, 246]; // east of the Kingsmead arches (x 148–168), clear of the LC1 road (x 217–223)
     const k = this.roster.get('platelayer')!.length;
     for (const x of xs) {
       const t = line.nearestT(new THREE.Vector3(x + k * 2.2, 0, 24));

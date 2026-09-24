@@ -471,6 +471,13 @@ export function createTraffic(ctx: Ctx): System {
     let go = t >= v.standUntil;
     if (st.kind === 'rank') {
       const front = rankQ.indexOf(v.id) <= 0;
+      // nobody stands on the rank for hours: after ~50 min unhired a cab gives up and goes back to the Crown
+      // (a fare that booked it but never turned up releases it after ~75 min; one already aboard is driven off as usual)
+      const stale = !v.hiredBy ? t - v.parkedAt > 50 : v.boardedAt < 0 && t - v.parkedAt > 75;
+      if (stale || v.rankGaveUp) {
+        if (!v.rankGaveUp) { v.rankGaveUp = true; v.hiredBy = null; retarget(v, 'mews'); }
+        leaveStop(v); return;
+      }
       if (!front) { v.standUntil = Math.max(v.standUntil, t + 4); if (!v.hiredBy) return; }
       if (v.hiredBy) {
         // leave once the fare is aboard (or give up on them)
@@ -479,7 +486,9 @@ export function createTraffic(ctx: Ctx): System {
         if (inside && v.boardedAt < 0) v.boardedAt = motionNow;
         go = (v.boardedAt >= 0 && motionNow - v.boardedAt > 2.5) || t - v.hiredAt > 20;
         if (go && v.boardedAt < 0) { v.hiredBy = null; go = false; v.standUntil = t + 5; }
-        if (go && !front) go = false;
+        // a cab with its fare aboard pulls out from wherever it stands on the rank (out of the kerb line, into the
+        // loop lane); an empty hired cab still waits its turn at the head of the rank
+        if (go && !front && v.boardedAt < 0) go = false;
         if (go) { v.riders.add(v.hiredBy!); syncRiders(v); retarget(v, pick(cabDestinations())); }
       } else if (go) {
         // unhired too long: off to try the Crown

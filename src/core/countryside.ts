@@ -1160,7 +1160,8 @@ export function buildCountryside(I: CountrysideInput): Countryside {
   for (const pr of pondRims) pr.a.center.y = pr.y; // pond areas report the rim (water ≈ rim − 0.06)
 
   // ── walk graph ──
-  const walk = buildWalkGraph(I, edges, paths, buildings, portals, crossings);
+  const wetAt = (x: number, z: number) => { const i = G.idx(x, z); return i >= 0 && Math.abs(G.riverD[i]) < hwAt(G.riverS[i]); };
+  const walk = buildWalkGraph(I, edges, paths, buildings, portals, crossings, { stones: ford.stones, fordPos: ford.pos, wet: wetAt });
 
   // ── static origins (doors & portals) ──
   const origins: StaticOrigin[] = [];
@@ -1437,7 +1438,8 @@ export function buildCountryside(I: CountrysideInput): Countryside {
 
 // ───────────────────────── walk graph ─────────────────────────
 
-function buildWalkGraph(I: CountrysideInput, edges: Record<string, RoadEdge>, paths: Countryside['paths'], buildings: Building[], portals: Portal[], crossings: LevelCrossing[]): WalkGraph {
+function buildWalkGraph(I: CountrysideInput, edges: Record<string, RoadEdge>, paths: Countryside['paths'], buildings: Building[], portals: Portal[], crossings: LevelCrossing[],
+  fordX?: { stones: THREE.Vector3[]; fordPos: THREE.Vector3; wet: (x: number, z: number) => boolean }): WalkGraph {
   const nodes: THREE.Vector3[] = [];
   const kind: string[] = [];
   const staff: boolean[] = [];
@@ -1527,6 +1529,35 @@ function buildWalkGraph(I: CountrysideInput, edges: Record<string, RoadEdge>, pa
     const i = add(p.pos.clone().setY(2), 'portal');
     const j = nearestIn(p.pos, footStart, footEnd, new Set(), 40);
     if (j >= 0) link(i, j);
+  }
+  // walkers cross the Coldharbour ford by the stepping stones (never wading through the water): the footway
+  // nodes that fall in the water are moved onto the nearest stone, and the bank nodes either side link to the
+  // chain of stones instead of to each other
+  if (fordX && fordX.stones.length > 1) {
+    const wetIdx: number[] = [];
+    for (let i = footStart; i < footEnd; i++) {
+      const q = nodes[i];
+      if (Math.hypot(q.x - fordX.fordPos.x, q.z - fordX.fordPos.z) < 30 && fordX.wet(q.x, q.z)) wetIdx.push(i);
+    }
+    if (wetIdx.length) {
+      const wetSet = new Set(wetIdx);
+      const st = fordX.stones.map((p) => add(p, 'path'));
+      for (let k = 1; k < st.length; k++) link(st[k - 1], st[k]);
+      const unlink = (a: number, b: number) => { adj[a] = adj[a].filter((x) => x !== b); adj[b] = adj[b].filter((x) => x !== a); };
+      const nearestStone = (q: THREE.Vector3) => st.reduce((b, i) => (nodes[i].distanceToSquared(q) < nodes[b].distanceToSquared(q) ? i : b), st[0]);
+      for (const w of wetIdx) {
+        for (const nb of [...adj[w]]) {
+          unlink(w, nb);
+          if (!wetSet.has(nb)) {
+            const end = nodes[st[0]].distanceToSquared(nodes[nb]) < nodes[st[st.length - 1]].distanceToSquared(nodes[nb]) ? st[0] : st[st.length - 1];
+            link(nb, end);
+          }
+        }
+        const s0 = nearestStone(nodes[w]);
+        nodes[w].copy(nodes[s0]);
+        link(w, s0);
+      }
+    }
   }
   const N = nodes.length;
   const nearest = (p: THREE.Vector3, o?: { staff?: boolean }) => {

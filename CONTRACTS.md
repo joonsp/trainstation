@@ -335,3 +335,14 @@ Put your shots in `shots/v2-<you>/`.
 - **Occlusion.** Trains at P2 (engine + first two cars) fade `canopyP2` to 0.42.
 - **Programs.** main pre-compiles the scene after the first frame against the real render target (composer buffer on med/high).
 - **Traffic.** A vehicle waiting to pull out gets priority after 1.5 min (creeping queue yields), after 4 min over anything that can still brake.
+
+### Final polish (v2)
+
+- **Cab rank.** A cab never stands on the rank for hours: unhired after ~50 min (or booked by a fare that has not boarded after ~75 min) it releases the hire and drives back to the Crown Mews (`Vehicle.rankGaveUp`).
+- **Narrowboat.** `bargeArrive` resets `bargeWait` to 0, so *Perseverance* no longer casts off at midnight right after mooring (the negative "leave soon" wait is only for the warm start).
+- **Ashbourne Bridge** is `width + 2.4` wide between the parapets, so the Kingsport Road footway (`width/2 + 0.6` off the crown) runs inside the parapet instead of along it.
+- **River ice** under snow keeps a blue-grey skating channel mid-river (snow drifts only along the banks), so the frozen river still reads against the snowy meadows.
+- **Rick Fire.** The bucket chain is manned from the rick end outward, recruits that settle into the crowd are re-sent to their posts every 4 sim min, the chain starts at 60 % of the hands actually present, and the Brigade takes charge of crew that traffic already set down at the barn.
+- **Cab rank, fare aboard.** A hired cab whose fare is aboard pulls out from any rank slot (it no longer waits behind unhired cabs at the head).
+- **People backstop.** A person in a leaving state (`going home`, `heading home`, `leaving`, `wandering off`) with `data.entering` set who has not moved for 30 sim min is dismissed again; after two retries through the nearest door.
+- **README** documents the v2 features, controls, all 25 events, quality tiers, debug params, per-tier performance and the architecture.

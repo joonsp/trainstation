@@ -48,6 +48,8 @@ export class Vehicle {
   stops: Stop[] = [];
   stopIdx = 0;
   parkedAt = 0;
+  /** gave up waiting on the rank (already retargeted to the mews) */
+  rankGaveUp = false;
   /** stand until this sim minute (may be extended by the scheduler) */
   standUntil = 0;
   colours: number[];

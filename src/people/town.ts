@@ -116,7 +116,10 @@ export class Town {
     const d = b.doors[0];
     const fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
     const sx = Math.cos(b.yaw), sz = -Math.sin(b.yaw);
-    const x = d.x + fx * out + sx * side, z = d.z + fz * out + sz * side;
+    // never out into the river (the lock-keeper's and mill cottages face the water)
+    let o = out;
+    while (o > 1 && this.ctx.layout.terrain.isWater(d.x + fx * o + sx * side, d.z + fz * o + sz * side)) o *= 0.6;
+    const x = d.x + fx * o + sx * side, z = d.z + fz * o + sz * side;
     return new THREE.Vector3(x, this.ctx.layout.heightAt(x, z), z);
   }
 

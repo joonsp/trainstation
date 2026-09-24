@@ -70,6 +70,8 @@ export interface WorldAPI {
   footbridgePath?: THREE.Vector3[];
   /** 0 = steady; >0 makes gas lamps (lanterns + point lights) gutter/flicker, e.g. for the ghost train */
   flickerLamps?(amount: number): void;
+  /** true if a tree trunk stands within r metres of (x, z) — events use it to place props clear of trees */
+  treeNear?(x: number, z: number, r: number): boolean;
 
   // ── v2: per-lamp control (the lamplighter's round) ──
   /** every gas lamp on the map: station lamps (layout.lampPositions) first, then layout.streetLamps */

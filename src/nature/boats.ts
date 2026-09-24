@@ -655,21 +655,49 @@ export function createBoats(ctx: Ctx, rig: InstancedRig, horses: InstancedRig, w
       tDo('gone', () => { bargeWait = 90 + rnd() * 200; }),
     );
   };
+  /**
+   * Perseverance arrives from off the map. Most days she comes down from Glenmoor and lies at the mill-pool
+   * mooring; some days she works THROUGH Millbridge lock and on down to the sea (river:down), and some days she
+   * comes UP from below, locks up and lies at m3 — so the lock and its keeper see regular use.
+   */
   const bargeArrive = () => {
     const b = barge!;
+    const r = rnd();
+    const variant: 'moor' | 'through' | 'fromBelow' = r < 0.3 ? 'through' : r < 0.6 ? 'fromBelow' : 'moor';
+    const up = variant !== 'fromBelow';
     b.tasks.length = 0;
-    b.away = false; b.load = 1; b.dir = 1;
-    b.s = R.portals.up.s - 16; b.lat = laneFor(b, b.s);
+    bargeWait = 0; // (a negative wait means "leave soon" — only for the warm start; never cast off at midnight after arriving)
+    b.away = false; b.load = 1; b.dir = up ? 1 : -1;
+    b.s = up ? R.portals.up.s - 16 : R.portals.down.s + 16; b.lat = laneFor(b, b.s);
     placeRiver(b);
-    b.yaw = R.poly.yawAt(b.s); b.px = b.x; b.pz = b.z;
-    ctx.origins.audit('nature', 'spawn', 'boats', tmp.set(b.x, b.y, b.z), `narrowboat ${b.id} @river:up`);
+    b.yaw = R.poly.yawAt(b.s) + (up ? 0 : Math.PI); b.px = b.x; b.pz = b.z;
+    ctx.origins.audit('nature', 'spawn', 'boats', tmp.set(b.x, b.y, b.z), `narrowboat ${b.id} @river:${up ? 'up' : 'down'}`);
     b.info.state = 'underway';
     seatRiders(b, [{ role: 'bargee', tag: 'narrowboat' }]);
     const h = b.horse;
     if (h) {
-      towPoint(b.s + TOW, tmp);
+      towPoint(b.s + b.dir * TOW, tmp);
       h.x = tmp.x; h.y = tmp.y; h.z = tmp.z; h.state = 'tow';
-      ctx.origins.audit('nature', 'spawn', 'animals', tmp, 'bargehorse @path:towUp');
+      ctx.origins.audit('nature', 'spawn', 'animals', tmp, `bargehorse @path:${up ? 'towUp' : 'towDown'}`);
+    }
+    if (variant === 'through') {
+      b.tasks.push(
+        tGo(lock.s0 - 30, 1.05, (bb) => laneFor(bb, bb.s)),
+        tLock(true),
+        tExit(false),
+        tDo('gone', () => { bargeWait = 120 + rnd() * 240; }),
+      );
+      return;
+    }
+    if (variant === 'fromBelow') {
+      b.tasks.push(
+        tGo(lock.s1 + 30, 1.05, (bb) => laneFor(bb, bb.s)),
+        tLock(false),
+        tGo(m3.s + 10, 0.9, (bb) => (bb.s < m3.s + 30 ? 0 : laneFor(bb, bb.s))),
+        tDo('unhitch', (bb) => { if (bb.horse) { bb.horse.state = 'graze'; bb.horse.timer = 3; } }),
+        bargeMoorTask(),
+      );
+      return;
     }
     const turnS = (m3.s + lock.s0 - 20) / 2;
     b.tasks.push(
